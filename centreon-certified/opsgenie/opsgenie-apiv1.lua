@@ -351,6 +351,9 @@ function EventQueue:new (conf)
     priority_must_be_set = 0,
     priority_matching = 'P1=1,P2=2,P3=3,P4=4,P5=5',
     opsgenie_priorities = 'P1,P2,P3,P4,P5',
+    enable_passive = 0,
+    service_passive_alert_alias = '{hostname}_{serviceDescription}_{state}',
+    source = 'Centreon',
     priority_mapping = {}
   }
 
@@ -488,6 +491,11 @@ function EventQueue:new (conf)
   retval.ba_incident_message = ifnil_or_empty(retval.ba_incident_message, '{baName} is {state}, health level reached {level_nominal}')
   retval.enable_incident_tags = check_boolean_number_option_syntax(retval.enable_incident_tags, 1)
   retval.get_bv = check_boolean_number_option_syntax(retval.get_bv, 1)
+  retval.source = ifnil_or_empty(retval.source, 'Centreon')
+  retval.passive_checks_enabled = check_boolean_number_option_syntax(retval.passive_checks_enabled, 0)
+  retval.service_passive_alert_alias = ifnil_or_empty(retval.service_passive_alert_alias, '{hostname}_{serviceDescription}_{state}')
+  
+  
 
   local severity_to_priority = {}
   
@@ -624,7 +632,7 @@ function EventQueue:is_valid_neb_event ()
     self.currentEvent.endpoint = '/v2/alerts'
     self.currentEvent.token = self.integration_api_token
 
-    self.currentEvent.hostname = get_hostname(self.currentEvent.host_id)  
+    self.currentEvent.hostname = get_hostname(self.currentEvent.host_id)
     -- can't find hostname in cache
     if self.currentEvent.hostname == self.currentEvent.host_id and self.skip_anon_events == 1 then
       return false
@@ -676,6 +684,7 @@ function EventQueue:is_valid_neb_event ()
     self.sendData.message = self:buildMessage(self.host_alert_message, nil)
     self.sendData.description = self:buildMessage(self.host_alert_description, self.currentEvent.output)
     self.sendData.alias = self:buildMessage(self.host_alert_alias, nil)
+    self.sendData.source = self:buildMessage(self.source, nil)
 
   elseif self.currentEvent.element == 24 then
   
@@ -695,9 +704,14 @@ function EventQueue:is_valid_neb_event ()
       return false
     end
 
+    self.sendData.source = self:buildMessage(self.source, nil)
     self.sendData.message = self:buildMessage(self.service_alert_message, nil) 
     self.sendData.description = self:buildMessage(self.service_alert_description, self.currentEvent.output) 
-    self.sendData.alias = self:buildMessage(self.service_alert_alias, nil)
+    if boolean_to_number(self.currentEvent.active_checks) == 0 and boolean_to_number(self.currentEvent.passive_checks) == 1 and self.enable_passive == 1 then
+      self.sendData.alias = self:buildMessage(self.service_passive_alert_alias, nil)
+    else
+      self.sendData.alias = self:buildMessage(self.service_alert_alias, nil)
+    end
   end
   
   return true
